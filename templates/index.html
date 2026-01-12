@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Python Game - Web Version</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #222; color: white; font-family: Arial; }
+        canvas { border: 2px solid #fff; background: black; display: block; margin: 0 auto; }
+        .controls { text-align: center; margin: 20px; }
+        .score { font-size: 24px; margin: 10px; }
+        .message { font-size: 36px; margin: 20px; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h1>Python Game - Web Version</h1>
+        <div class="score">Score: <span id="score">0</span></div>
+    </div>
+    
+    <canvas id="gameCanvas" width="900" height="600"></canvas>
+    
+    <div class="controls">
+        <p>Use WASD to move, mouse to aim, SPACE to shoot</p>
+        <div id="gameMessage" class="message"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const socket = io();
+        
+        let keys = {};
+        let mouseX = 450, mouseY = 300;
+        let gameState = { player: {x: 450, y: 300, angle: 0}, bullets: [], enemies: [], score: 0, game_state: 'playing' };
+        
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key === ' ') {
+                e.preventDefault();
+                socket.emit('shoot');
+            }
+            if (e.key.toLowerCase() === 'r' && gameState.game_state !== 'playing') {
+                socket.emit('restart_game');
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+        
+        // Game loop
+        function update() {
+            if (gameState.game_state === 'playing') {
+                let newX = gameState.player.x;
+                let newY = gameState.player.y;
+                
+                if (keys['w']) newY -= 5;
+                if (keys['s']) newY += 5;
+                if (keys['a']) newX -= 5;
+                if (keys['d']) newX += 5;
+                
+                const dx = mouseX - newX;
+                const dy = mouseY - newY;
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                
+                socket.emit('player_move', { x: newX, y: newY, angle: angle });
+            }
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameState.game_state === 'playing') {
+                // Draw player
+                const player = gameState.player;
+                ctx.save();
+                ctx.translate(player.x, player.y);
+                ctx.rotate(player.angle * Math.PI / 180);
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.moveTo(112.5, 0);
+                ctx.lineTo(-37.5, -37.5);
+                ctx.lineTo(-37.5, 37.5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+                
+                // Draw bullets
+                ctx.fillStyle = 'yellow';
+                gameState.bullets.forEach(bullet => {
+                    ctx.beginPath();
+                    ctx.arc(bullet.x, bullet.y, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+                
+                // Draw enemies
+                gameState.enemies.forEach(enemy => {
+                    ctx.save();
+                    ctx.translate(enemy.x, enemy.y);
+                    ctx.rotate(enemy.angle * Math.PI / 180);
+                    ctx.fillStyle = 'red';
+                    ctx.beginPath();
+                    ctx.moveTo(75, 0);
+                    ctx.lineTo(-37.5, -37.5);
+                    ctx.lineTo(-37.5, 37.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                });
+            }
+            
+            // Draw game messages
+            const messageEl = document.getElementById('gameMessage');
+            if (gameState.game_state === 'won') {
+                messageEl.innerHTML = 'YOU WIN!<br>Press R to restart';
+                messageEl.style.color = 'green';
+            } else if (gameState.game_state === 'lost') {
+                messageEl.innerHTML = 'GAME OVER<br>Press R to restart';
+                messageEl.style.color = 'red';
+            } else {
+                messageEl.innerHTML = '';
+            }
+        }
+        
+        // Socket events
+        socket.on('game_update', (data) => {
+            gameState = data;
+            document.getElementById('score').textContent = data.score;
+        });
+        
+        // Game loop
+        setInterval(() => {
+            update();
+            draw();
+        }, 16);
+    </script>
+</body>
+</html>
